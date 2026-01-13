@@ -54,4 +54,11 @@ interface ConnectionHandler
      * @return array<string, mixed>
      */
     public function getCapabilities(): array;
+
+    /**
+     * Get list of available databases on this connection.
+     *
+     * @return array<string> Sorted list of database names
+     */
+    public function getAvailableDatabases(): array;
 }

@@ -86,6 +86,44 @@ echo $visualizer->render($renderer);
 
 ---
 
+## 🌐 HTML Schema Viewer
+
+To view your schema in the browser with HTML:
+
+```php
+<?php
+require 'vendor/autoload.php';
+
+use Sculptor\DbVisualizer\Services\ConnectionHandler;
+use Sculptor\DbVisualizer\Services\Visualizer;
+use Sculptor\DbVisualizer\Renderers\HTMLRenderer;
+
+$pdo = new PDO(
+    'mysql:host=localhost;dbname=my_database',
+    'username',
+    'password'
+);
+
+$connection = new ConnectionHandler($pdo, 'my_database');
+$schema = $connection->getIntrospector()->schema();
+
+$visualizer = new Visualizer($schema);
+$visualizer->enable();
+
+$renderer = new HTMLRenderer();
+
+header('Content-Type: text/html; charset=UTF-8');
+echo $visualizer->render($renderer);
+```
+
+The HTML output is:
+* **Server-side rendered** (no JavaScript)
+* **Fully escaped** for XSS safety
+* **Self-contained** with minimal inline styles
+* **Deterministic** for consistent output
+
+---
+
 ## 🧱 Architecture Overview
 
 ```
@@ -143,9 +181,15 @@ This prevents accidental exposure in production environments.
 * Fully escaped identifiers
 * Tooling & API friendly
 
+### ✅ HTML (Available)
+
+* Server-side rendering (no JavaScript)
+* Semantic HTML with minimal inline styles
+* Fully escaped identifiers (XSS-safe)
+* Responsive, readable layout
+
 ### ⏳ Planned
 
-* HTML (read-only, escaped)
 * DOT / GraphViz (ER diagrams)
 
 ---
@@ -190,7 +234,7 @@ JSON output is deterministic to support snapshot testing.
 
 ## 🗺 Roadmap
 
-* [ ] HTML Renderer
+* [x] HTML Renderer (v0.2.0)
 * [ ] PostgreSQL Adapter
 * [ ] SQLite Adapter
 * [ ] DOT / ER Diagram Renderer

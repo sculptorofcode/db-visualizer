@@ -41,4 +41,15 @@ interface DriverAdapter extends SchemaIntrospector
      * @return array<string, mixed> May include: version, max_table_name_length, supports_fk, etc.
      */
     public function getCapabilities(\PDO $pdo): array;
+
+    /**
+     * Get list of available databases on the connected server.
+     *
+     * Metadata-only query. Returns only database names accessible to the current user.
+     *
+     * @param \PDO $pdo Database connection
+     *
+     * @return array<string> List of database names, sorted alphabetically
+     */
+    public function getAvailableDatabases(\PDO $pdo): array;
 }

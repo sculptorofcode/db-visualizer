@@ -27,9 +27,10 @@ interface Visualizer
      * Create a new visualizer.
      *
      * @param Schema $schema Schema data to visualize
+     * @param ConnectionHandler $connectionHandler Handler for database connection operations
      * @param bool $enabled Whether visualization is enabled (default: false for security)
      */
-    public function __construct(Schema $schema, bool $enabled = false);
+    public function __construct(Schema $schema, ConnectionHandler $connectionHandler, bool $enabled = false);
 
     /**
      * Explicitly enable visualization.
@@ -81,4 +82,24 @@ interface Visualizer
      * Get the underlying schema being visualized.
      */
     public function getSchema(): Schema;
+
+    /**
+     * Get list of available databases on the connection.
+     *
+     * Metadata-only; requires connection to be initialized.
+     * Returns list of accessible database names.
+     *
+     * @return array<string> List of database names, sorted alphabetically
+     */
+    public function getAvailableDatabases(): array;
+
+    /**
+     * Get a pre-configured HTML renderer with available databases.
+     *
+     * Convenience method that creates an HTMLRenderer and automatically
+     * configures it with the list of available databases.
+     *
+     * @return Renderer HTML renderer ready to render the schema
+     */
+    public function getHTMLRenderer();  // Returns HTMLRenderer implementing Renderer
 }

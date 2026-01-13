@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Sculptor\DbVisualizer\Services;
 
-use Sculptor\DbVisualizer\Contracts\Services\Renderer;
-use Sculptor\DbVisualizer\Contracts\Services\Visualizer as VisualizerContract;
+use Sculptor\DbVisualizer\Renderers\HTMLRenderer;
 use Sculptor\DbVisualizer\Contracts\Values\Schema;
+use Sculptor\DbVisualizer\Contracts\Services\Renderer;
 use Sculptor\DbVisualizer\Exceptions\VisualizationDisabledException;
+use Sculptor\DbVisualizer\Contracts\Services\Visualizer as VisualizerContract;
+use Sculptor\DbVisualizer\Contracts\Services\ConnectionHandler as ConnectionHandlerContract;
 
 /**
  * Visualization orchestrator with explicit enable/disable gating.
@@ -32,10 +34,12 @@ final class Visualizer implements VisualizerContract
      * Create a new visualizer.
      *
      * @param Schema $schema Schema data to visualize
+     * @param ConnectionHandlerContract $connectionHandler Handler for database operations
      * @param bool $enabled Whether visualization is enabled (default: false for security)
      */
     public function __construct(
         private readonly Schema $schema,
+        private readonly ConnectionHandlerContract $connectionHandler,
         bool $enabled = false,
     ) {
         $this->enabled = $enabled;
@@ -110,7 +114,19 @@ final class Visualizer implements VisualizerContract
     public function render(Renderer $renderer): string
     {
         $this->guardEnabled($renderer->getName());
-        return $renderer->render($this->schema);
+        
+        // Check if a database switch was requested via query parameter
+        $requestedDatabase = $_GET['database'] ?? null;
+        $schemaToRender = $this->schema;
+        
+        if ($requestedDatabase !== null && $requestedDatabase !== '') {
+            // Fetch schema for the requested database
+            $schemaToRender = $this->connectionHandler
+                ->getIntrospector()
+                ->schema($requestedDatabase);
+        }
+        
+        return $renderer->render($schemaToRender);
     }
 
     /**
@@ -119,6 +135,29 @@ final class Visualizer implements VisualizerContract
     public function getSchema(): Schema
     {
         return $this->schema;
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function getAvailableDatabases(): array
+    {
+        return $this->connectionHandler->getAvailableDatabases();
+    }
+
+    /**
+     * Get a pre-configured HTML renderer with available databases.
+     *
+     * Convenience method that creates an HTMLRenderer and automatically
+     * configures it with the list of available databases.
+     *
+     * @return HTMLRenderer
+     */
+    public function getHTMLRenderer(): HTMLRenderer
+    {
+        $renderer = new HTMLRenderer();
+        $renderer->setAvailableDatabases($this->getAvailableDatabases());
+        return $renderer;
     }
 
     /**

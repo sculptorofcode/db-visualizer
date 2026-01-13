@@ -10,11 +10,20 @@ use Sculptor\DbVisualizer\Contracts\Values\ForeignKey;
 use Sculptor\DbVisualizer\Contracts\Values\Index;
 use Sculptor\DbVisualizer\Contracts\Values\Schema;
 use Sculptor\DbVisualizer\Contracts\Values\Table;
+use Sculptor\DbVisualizer\Renderers\Views\ColumnsTable;
+use Sculptor\DbVisualizer\Renderers\Views\DocumentFooter;
+use Sculptor\DbVisualizer\Renderers\Views\DocumentHead;
+use Sculptor\DbVisualizer\Renderers\Views\EmptyState;
+use Sculptor\DbVisualizer\Renderers\Views\ForeignKeysTable;
+use Sculptor\DbVisualizer\Renderers\Views\IndexesTable;
+use Sculptor\DbVisualizer\Renderers\Views\Navigation;
+use Sculptor\DbVisualizer\Renderers\Views\TablePage;
 
 /**
  * HTML Renderer for schema visualization.
  *
- * Converts a Schema value object to semantic HTML with minimal inline styles.
+ * Converts a Schema value object to semantic HTML with modern, compact design.
+ * Uses anchor-based pagination with :target CSS selector for table navigation.
  * All identifiers and data are properly escaped to prevent XSS attacks.
  * Produces deterministic, server-side rendered output.
  *
@@ -25,8 +34,15 @@ use Sculptor\DbVisualizer\Contracts\Values\Table;
  * - No external assets
  * - Metadata-only rendering
  *
+ * Navigation:
+ * - Each table rendered as a separate page section with anchor ID
+ * - Only one table visible at a time via :target CSS selector
+ * - URL fragments control which table is displayed (#table-name)
+ * - First table visible by default
+ *
  * Determinism:
  * - Tables sorted alphabetically by name
+ * - Navigation list sorted alphabetically
  * - Columns preserve schema ordinal position
  * - Indexes sorted alphabetically by name
  * - Foreign keys sorted alphabetically by name
@@ -42,6 +58,26 @@ final class HTMLRenderer implements Renderer
      * Charset for HTML output.
      */
     private const CHARSET = 'UTF-8';
+
+    /**
+     * Available databases for selector dropdown.
+     *
+     * @var array<string>
+     */
+    private array $availableDatabases = [];
+
+    /**
+     * Set the list of available databases for the selector dropdown.
+     *
+     * @param array<string> $databases List of database names
+     *
+     * @return self
+     */
+    public function setAvailableDatabases(array $databases): self
+    {
+        $this->availableDatabases = $databases;
+        return $this;
+    }
 
     /**
      * {@inheritDoc}
@@ -64,400 +100,73 @@ final class HTMLRenderer implements Renderer
      */
     public function render(Schema $schema): string
     {
-        $html = $this->renderDocumentHead($schema);
-        $html .= $this->renderSchemaHeader($schema);
+        $dbName = $this->escape($schema->getName());
+        $engine = $this->escape($schema->getEngine());
+        $tableCount = count($schema->getTables());
+        
+        $html = DocumentHead::render($dbName);
 
-        if ($schema->getTables()) {
-            $tables = $schema->getTables();
+        $tables = $schema->getTables();
+        if ($tables) {
             // Sort tables alphabetically for deterministic output
             usort($tables, fn(Table $a, Table $b) => strcmp($a->getName(), $b->getName()));
 
+            // Build table navigation links
+            $tableLinks = [];
             foreach ($tables as $table) {
-                $html .= $this->renderTableSection($table);
+                $tableLinks[$this->sanitizeAnchorId($table->getName())] = $this->escape($table->getName());
+            }
+
+            // Render navigation with database info and available databases
+            $html .= Navigation::render($dbName, $this->availableDatabases, $engine, $tableCount, $tableLinks);
+
+            // Render table pages
+            foreach ($tables as $table) {
+                $html .= $this->renderTablePage($table);
             }
         } else {
-            $html .= $this->renderEmptyState();
+            // Render navigation even when no tables (shows database info)
+            $html .= Navigation::render($dbName, $this->availableDatabases, $engine, $tableCount, []);
+            $html .= EmptyState::render();
         }
 
-        $html .= $this->renderDocumentFooter();
+        $html .= DocumentFooter::render();
 
         return $html;
     }
 
     /**
-     * Render HTML document head (DOCTYPE, meta, style).
-     *
-     * @param Schema $schema
-     *
-     * @return string
-     */
-    private function renderDocumentHead(Schema $schema): string
-    {
-        $dbName = $this->escape($schema->getName());
-
-        return <<<'HTML'
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Schema: HTML . $dbName . </title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", monospace;
-            margin: 2rem;
-            line-height: 1.6;
-            color: #333;
-            background: #fafafa;
-        }
-        h1, h2, h3 {
-            margin-top: 2rem;
-            color: #222;
-        }
-        h1 {
-            border-bottom: 3px solid #999;
-            padding-bottom: 0.5rem;
-        }
-        h2 {
-            border-bottom: 2px solid #ddd;
-            padding-bottom: 0.25rem;
-        }
-        h3 {
-            margin-top: 1.5rem;
-            font-size: 1.1em;
-        }
-        table {
-            border-collapse: collapse;
-            width: 100%;
-            margin: 1rem 0;
-            background: white;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-        th, td {
-            border: 1px solid #ddd;
-            padding: 0.75rem;
-            text-align: left;
-        }
-        th {
-            background: #f5f5f5;
-            font-weight: bold;
-            color: #222;
-        }
-        tbody tr:hover {
-            background: #f9f9f9;
-        }
-        code {
-            background: #f4f4f4;
-            padding: 0.2em 0.4em;
-            border-radius: 3px;
-            font-family: "Courier New", monospace;
-            font-size: 0.9em;
-        }
-        .schema-info {
-            background: white;
-            border-left: 4px solid #999;
-            padding: 1.5rem;
-            margin: 2rem 0;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-        .schema-info p {
-            margin: 0.5rem 0;
-        }
-        .table-section {
-            margin-bottom: 3rem;
-            padding: 1.5rem 0;
-            border-bottom: 2px solid #eee;
-        }
-        .table-section:last-child {
-            border-bottom: none;
-        }
-        .comment {
-            color: #666;
-            font-style: italic;
-            font-size: 0.95em;
-            margin: 0.5rem 0;
-        }
-        .empty {
-            color: #999;
-            font-style: italic;
-            padding: 2rem;
-            text-align: center;
-            background: #f9f9f9;
-            border-radius: 4px;
-        }
-        .table-meta {
-            color: #666;
-            font-size: 0.95em;
-            margin: 0.5rem 0;
-        }
-    </style>
-</head>
-<body>
-HTML;
-    }
-
-    /**
-     * Render schema header section with database name, engine, and table count.
-     *
-     * @param Schema $schema
-     *
-     * @return string
-     */
-    private function renderSchemaHeader(Schema $schema): string
-    {
-        $dbName = $this->escape($schema->getName());
-        $engine = $this->escape($schema->getEngine());
-        $tableCount = count($schema->getTables());
-
-        return <<<HTML
-    <div class="schema-info">
-        <h1>Database Schema: <code>{$dbName}</code></h1>
-        <p><strong>Engine:</strong> <code>{$engine}</code></p>
-        <p><strong>Tables:</strong> {$tableCount}</p>
-    </div>
-
-HTML;
-    }
-
-    /**
-     * Render a complete table section (columns, indexes, foreign keys).
+     * Render a table page (section with anchor ID).
      *
      * @param Table $table
      *
      * @return string
      */
-    private function renderTableSection(Table $table): string
+    private function renderTablePage(Table $table): string
     {
+        $anchorId = $this->sanitizeAnchorId($table->getName());
         $tableName = $this->escape($table->getName());
         $tableType = $this->escape($table->getType() ?? '');
-        $comment = $table->getComment() ? $this->escape($table->getComment()) : '';
+        $comment = $table->getComment() ? $this->escape($table->getComment()) : null;
 
-        $html = <<<HTML
-    <div class="table-section">
-        <h2><code>{$tableName}</code></h2>
-
-HTML;
-
-        if ($comment) {
-            $html .= <<<HTML
-        <p class="comment">{$comment}</p>
-
-HTML;
-        }
-
-        if ($tableType) {
-            $html .= <<<HTML
-        <p class="table-meta"><strong>Type:</strong> {$tableType}</p>
-
-HTML;
-        }
+        $html = TablePage::renderHeader($anchorId, $tableName, $comment, $tableType ?: null);
 
         // Columns section
-        $html .= $this->renderColumnsTable($table->getColumns());
+        $html .= ColumnsTable::render($table->getColumns(), $this->escape(...));
 
         // Indexes section
         if ($table->getIndexes()) {
-            $html .= $this->renderIndexesTable($table->getIndexes());
+            $html .= IndexesTable::render($table->getIndexes(), $this->escape(...));
         }
 
         // Foreign keys section
         if ($table->getForeignKeys()) {
-            $html .= $this->renderForeignKeysTable($table->getForeignKeys());
+            $html .= ForeignKeysTable::render($table->getForeignKeys(), $this->escape(...));
         }
 
-        $html .= "    </div>\n\n";
+        $html .= TablePage::renderFooter();
 
         return $html;
-    }
-
-    /**
-     * Render columns table for a table.
-     *
-     * @param array<Column> $columns
-     *
-     * @return string
-     */
-    private function renderColumnsTable(array $columns): string
-    {
-        $html = <<<'HTML'
-        <h3>Columns</h3>
-        <table>
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Type</th>
-                    <th>Nullable</th>
-                    <th>Default</th>
-                    <th>Auto-Inc</th>
-                    <th>Comment</th>
-                </tr>
-            </thead>
-            <tbody>
-HTML;
-
-        foreach ($columns as $column) {
-            $name = $this->escape($column->getName());
-            $type = $this->escape($column->getType());
-            $nullable = $column->isNullable() ? 'YES' : 'NO';
-            $default = $column->getDefault() ? $this->escape($column->getDefault()) : '—';
-            $autoInc = $column->isAutoIncrement() ? '✓' : '—';
-            $comment = $column->getComment() ? $this->escape($column->getComment()) : '—';
-
-            $html .= <<<HTML
-                <tr>
-                    <td><code>{$name}</code></td>
-                    <td><code>{$type}</code></td>
-                    <td>{$nullable}</td>
-                    <td>{$default}</td>
-                    <td>{$autoInc}</td>
-                    <td>{$comment}</td>
-                </tr>
-HTML;
-        }
-
-        $html .= <<<'HTML'
-            </tbody>
-        </table>
-
-HTML;
-
-        return $html;
-    }
-
-    /**
-     * Render indexes table for a table.
-     *
-     * @param array<Index> $indexes
-     *
-     * @return string
-     */
-    private function renderIndexesTable(array $indexes): string
-    {
-        // Sort indexes alphabetically for deterministic output
-        $sortedIndexes = $indexes;
-        usort($sortedIndexes, fn(Index $a, Index $b) => strcmp($a->getName(), $b->getName()));
-
-        $html = <<<'HTML'
-        <h3>Indexes</h3>
-        <table>
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Columns</th>
-                    <th>Unique</th>
-                    <th>Primary</th>
-                </tr>
-            </thead>
-            <tbody>
-HTML;
-
-        foreach ($sortedIndexes as $index) {
-            $name = $this->escape($index->getName());
-            $columns = implode(', ', array_map(fn($col) => $this->escape($col), $index->getColumnNames()));
-            $unique = $index->isUnique() ? '✓' : '—';
-            $primary = $index->isPrimary() ? '✓' : '—';
-
-            $html .= <<<HTML
-                <tr>
-                    <td><code>{$name}</code></td>
-                    <td><code>{$columns}</code></td>
-                    <td>{$unique}</td>
-                    <td>{$primary}</td>
-                </tr>
-HTML;
-        }
-
-        $html .= <<<'HTML'
-            </tbody>
-        </table>
-
-HTML;
-
-        return $html;
-    }
-
-    /**
-     * Render foreign keys table for a table.
-     *
-     * @param array<ForeignKey> $foreignKeys
-     *
-     * @return string
-     */
-    private function renderForeignKeysTable(array $foreignKeys): string
-    {
-        // Sort foreign keys alphabetically for deterministic output
-        $sortedFKs = $foreignKeys;
-        usort($sortedFKs, fn(ForeignKey $a, ForeignKey $b) => strcmp($a->getName(), $b->getName()));
-
-        $html = <<<'HTML'
-        <h3>Foreign Keys</h3>
-        <table>
-            <thead>
-                <tr>
-                    <th>Constraint</th>
-                    <th>Local Column(s)</th>
-                    <th>References</th>
-                    <th>ON DELETE</th>
-                    <th>ON UPDATE</th>
-                </tr>
-            </thead>
-            <tbody>
-HTML;
-
-        foreach ($sortedFKs as $fk) {
-            $name = $this->escape($fk->getName());
-            $localCols = implode(', ', array_map(fn($col) => $this->escape($col), $fk->getLocalColumns()));
-            $refTable = $this->escape($fk->getReferencedTable());
-            $refCols = implode(', ', array_map(fn($col) => $this->escape($col), $fk->getReferencedColumns()));
-            $onDelete = $fk->getOnDelete() ? $this->escape($fk->getOnDelete()) : '—';
-            $onUpdate = $fk->getOnUpdate() ? $this->escape($fk->getOnUpdate()) : '—';
-
-            $html .= <<<HTML
-                <tr>
-                    <td><code>{$name}</code></td>
-                    <td><code>{$localCols}</code></td>
-                    <td><code>{$refTable}({$refCols})</code></td>
-                    <td>{$onDelete}</td>
-                    <td>{$onUpdate}</td>
-                </tr>
-HTML;
-        }
-
-        $html .= <<<'HTML'
-            </tbody>
-        </table>
-
-HTML;
-
-        return $html;
-    }
-
-    /**
-     * Render empty state (no tables).
-     *
-     * @return string
-     */
-    private function renderEmptyState(): string
-    {
-        return <<<'HTML'
-    <div class="schema-info">
-        <p class="empty">No tables found in this schema.</p>
-    </div>
-
-HTML;
-    }
-
-    /**
-     * Render document footer (closing body and html tags).
-     *
-     * @return string
-     */
-    private function renderDocumentFooter(): string
-    {
-        return <<<'HTML'
-</body>
-</html>
-HTML;
     }
 
     /**
@@ -472,5 +181,25 @@ HTML;
     private function escape(string $value): string
     {
         return htmlspecialchars($value, self::ESCAPE_FLAGS, self::CHARSET);
+    }
+
+    /**
+     * Sanitize a string for use as an HTML anchor ID.
+     *
+     * Converts table name to valid anchor ID:
+     * - Lowercase
+     * - Replace spaces and special chars with hyphens
+     * - Remove leading/trailing hyphens
+     *
+     * @param string $name
+     *
+     * @return string
+     */
+    private function sanitizeAnchorId(string $name): string
+    {
+        $id = strtolower($name);
+        $id = preg_replace('/[^a-z0-9]+/', '-', $id);
+        $id = trim($id, '-');
+        return $id ?: 'table';
     }
 }

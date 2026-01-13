@@ -23,24 +23,27 @@ interface SchemaIntrospector
     /**
      * Get the complete schema snapshot.
      *
+     * @param string|null $databaseName Optional database name. If provided, introspects that database instead of the default one.
      * @throws SchemaAccessException if basic schema metadata cannot be accessed
      */
-    public function schema(): Schema;
+    public function schema(?string $databaseName = null): Schema;
 
     /**
      * Get a single table by name.
      *
+     * @param string|null $databaseName Optional database name. If provided, gets table from that database.
      * @throws SchemaAccessException if table introspection fails
      */
-    public function table(string $name): ?Table;
+    public function table(string $name, ?string $databaseName = null): ?Table;
 
     /**
      * Get all table names in the schema.
      *
+     * @param string|null $databaseName Optional database name. If provided, lists tables from that database.
      * @return array<string>
      * @throws SchemaAccessException if table list cannot be accessed
      */
-    public function tableNames(): array;
+    public function tableNames(?string $databaseName = null): array;
 
     /**
      * Get all tables that have outgoing foreign keys.

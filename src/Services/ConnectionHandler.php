@@ -4,12 +4,13 @@ declare(strict_types=1);
 
 namespace Sculptor\DbVisualizer\Services;
 
-use Sculptor\DbVisualizer\Contracts\Services\ConnectionHandler as ConnectionHandlerContract;
+use PDO;
+use PDOException;
+use Sculptor\DbVisualizer\Contracts\Services\DriverAdapter;
 use Sculptor\DbVisualizer\Contracts\Services\SchemaIntrospector;
 use Sculptor\DbVisualizer\Exceptions\InvalidConnectionException;
 use Sculptor\DbVisualizer\Exceptions\UnsupportedDatabaseEngineException;
-use PDO;
-use PDOException;
+use Sculptor\DbVisualizer\Contracts\Services\ConnectionHandler as ConnectionHandlerContract;
 
 /**
  * Handles database connection management and routing to driver adapters.
@@ -93,6 +94,20 @@ final class ConnectionHandler implements ConnectionHandlerContract
     public function getCapabilities(): array
     {
         return $this->getIntrospector()->getCapabilities($this->pdo);
+    }
+
+    /**
+     * Get list of available databases on this connection.
+     *
+     * @return array<string> Sorted list of database names
+     */
+    public function getAvailableDatabases(): array
+    {
+        $introspector = $this->getIntrospector();
+        if ($introspector instanceof DriverAdapter) {
+            return $introspector->getAvailableDatabases($this->pdo);
+        }
+        return [];
     }
 
     /**

@@ -103,30 +103,19 @@ final class MySQLAdapter implements DriverAdapter
     /**
      * {@inheritDoc}
      */
-    public function schema(): Schema
+    public function getAvailableDatabases(PDO $pdo): array
     {
-        if ($this->cachedSchema !== null) {
-            return $this->cachedSchema;
-        }
-
         try {
-            $tables = [];
-            $tableNames = $this->tableNames();
-
-            foreach ($tableNames as $tableName) {
-                $tables[] = $this->table($tableName);
-            }
-
-            $this->cachedSchema = new SchemaImplementation(
-                $this->database,
-                'mysql',
-                array_filter($tables, fn($t) => $t !== null),
+            $stmt = $pdo->query(
+                'SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA 
+                 WHERE SCHEMA_NAME NOT IN ("information_schema", "mysql", "performance_schema", "sys")
+                 ORDER BY SCHEMA_NAME ASC'
             );
-
-            return $this->cachedSchema;
+            $databases = array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'SCHEMA_NAME');
+            return $databases ?: [];
         } catch (PDOException $e) {
-            throw new SchemaAccessException(
-                "Failed to introspect schema: {$e->getMessage()}",
+            throw new PermissionDeniedException(
+                "Cannot list available databases: {$e->getMessage()}",
                 previous: $e
             );
         }
@@ -135,28 +124,71 @@ final class MySQLAdapter implements DriverAdapter
     /**
      * {@inheritDoc}
      */
-    public function table(string $name): ?Table
+    public function schema(?string $databaseName = null): Schema
     {
+        $targetDatabase = $databaseName ?? $this->database;
+        $cacheKey = "schema_{$targetDatabase}";
+        
+        // Check cache for requested database
+        if (isset($this->cachedSchema) && ($databaseName === null || $this->database === $databaseName)) {
+            return $this->cachedSchema;
+        }
+
+        try {
+            $tables = [];
+            $tableNames = $this->tableNames($targetDatabase);
+
+            foreach ($tableNames as $tableName) {
+                $tables[] = $this->table($tableName, $targetDatabase);
+            }
+
+            $schema = new SchemaImplementation(
+                $targetDatabase,
+                'mysql',
+                array_filter($tables, fn($t) => $t !== null),
+            );
+
+            // Cache only if it's the default database
+            if ($databaseName === null) {
+                $this->cachedSchema = $schema;
+            }
+
+            return $schema;
+        } catch (PDOException $e) {
+            throw new SchemaAccessException(
+                "Failed to introspect schema for '{$targetDatabase}': {$e->getMessage()}",
+                previous: $e
+            );
+        }
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    public function table(string $name, ?string $databaseName = null): ?Table
+    {
+        $targetDatabase = $databaseName ?? $this->database;
+        
         try {
             $stmt = $this->pdo->prepare(
                 'SELECT TABLE_NAME, TABLE_COMMENT, TABLE_TYPE 
                  FROM INFORMATION_SCHEMA.TABLES 
                  WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?'
             );
-            $stmt->execute([$this->database, $name]);
+            $stmt->execute([$targetDatabase, $name]);
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
 
             if (!$row) {
                 return null;
             }
 
-            $columns = $this->extractColumnsForTable($name);
-            $indexes = $this->extractIndexesForTable($name);
-            $foreignKeys = $this->extractForeignKeysForTable($name);
+            $columns = $this->extractColumnsForTable($name, $targetDatabase);
+            $indexes = $this->extractIndexesForTable($name, $targetDatabase);
+            $foreignKeys = $this->extractForeignKeysForTable($name, $targetDatabase);
 
             return new TableImplementation(
                 name: $name,
-                schema: $this->database,
+                schema: $targetDatabase,
                 columns: $columns,
                 indexes: $indexes,
                 foreignKeys: $foreignKeys,
@@ -174,21 +206,23 @@ final class MySQLAdapter implements DriverAdapter
     /**
      * {@inheritDoc}
      */
-    public function tableNames(): array
+    public function tableNames(?string $databaseName = null): array
     {
+        $targetDatabase = $databaseName ?? $this->database;
+        
         try {
             $stmt = $this->pdo->prepare(
                 'SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES 
                  WHERE TABLE_SCHEMA = ? 
                  ORDER BY TABLE_NAME'
             );
-            $stmt->execute([$this->database]);
+            $stmt->execute([$targetDatabase]);
             $results = $stmt->fetchAll(PDO::FETCH_COLUMN);
             return $results ?: [];
         } catch (PDOException $e) {
             if ($this->isPermissionError($e)) {
                 throw new PermissionDeniedException(
-                    "Cannot access INFORMATION_SCHEMA.TABLES for database '{$this->database}'",
+                    "Cannot access INFORMATION_SCHEMA.TABLES for database '{$targetDatabase}'",
                     previous: $e
                 );
             }
@@ -224,8 +258,10 @@ final class MySQLAdapter implements DriverAdapter
      *
      * @throws SchemaAccessException
      */
-    private function extractColumnsForTable(string $tableName): array
+    private function extractColumnsForTable(string $tableName, ?string $databaseName = null): array
     {
+        $targetDatabase = $databaseName ?? $this->database;
+        
         try {
             $stmt = $this->pdo->prepare(
                 'SELECT 
@@ -240,7 +276,7 @@ final class MySQLAdapter implements DriverAdapter
                  WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
                  ORDER BY ORDINAL_POSITION'
             );
-            $stmt->execute([$this->database, $tableName]);
+            $stmt->execute([$targetDatabase, $tableName]);
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             $columns = [];
@@ -272,8 +308,10 @@ final class MySQLAdapter implements DriverAdapter
      *
      * @throws SchemaAccessException
      */
-    private function extractIndexesForTable(string $tableName): array
+    private function extractIndexesForTable(string $tableName, ?string $databaseName = null): array
     {
+        $targetDatabase = $databaseName ?? $this->database;
+        
         try {
             $stmt = $this->pdo->prepare(
                 'SELECT 
@@ -285,7 +323,7 @@ final class MySQLAdapter implements DriverAdapter
                  WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
                  ORDER BY INDEX_NAME, SEQ_IN_INDEX'
             );
-            $stmt->execute([$this->database, $tableName]);
+            $stmt->execute([$targetDatabase, $tableName]);
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             $indexMap = [];
@@ -327,8 +365,10 @@ final class MySQLAdapter implements DriverAdapter
      *
      * @throws SchemaAccessException
      */
-    private function extractForeignKeysForTable(string $tableName): array
+    private function extractForeignKeysForTable(string $tableName, ?string $databaseName = null): array
     {
+        $targetDatabase = $databaseName ?? $this->database;
+        
         try {
             $stmt = $this->pdo->prepare(
                 'SELECT
@@ -348,7 +388,7 @@ final class MySQLAdapter implements DriverAdapter
                 ORDER BY kcu.CONSTRAINT_NAME, kcu.ORDINAL_POSITION'
             );
 
-            $stmt->execute([$this->database, $tableName]);
+            $stmt->execute([$targetDatabase, $tableName]);
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
             $foreignKeyMap = [];
