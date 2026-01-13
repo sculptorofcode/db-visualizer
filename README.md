@@ -96,10 +96,9 @@ require 'vendor/autoload.php';
 
 use Sculptor\DbVisualizer\Services\ConnectionHandler;
 use Sculptor\DbVisualizer\Services\Visualizer;
-use Sculptor\DbVisualizer\Renderers\HTMLRenderer;
 
 $pdo = new PDO(
-    'mysql:host=localhost;dbname=my_database',
+    'mysql:host=localhost',
     'username',
     'password'
 );
@@ -110,17 +109,32 @@ $schema = $connection->getIntrospector()->schema();
 $visualizer = new Visualizer($schema);
 $visualizer->enable();
 
-$renderer = new HTMLRenderer();
-
+// Use convenience method for pre-configured HTML renderer
 header('Content-Type: text/html; charset=UTF-8');
-echo $visualizer->render($renderer);
+echo $visualizer->render($visualizer->getHTMLRenderer());
 ```
 
 The HTML output is:
 * **Server-side rendered** (no JavaScript)
 * **Fully escaped** for XSS safety
 * **Self-contained** with minimal inline styles
+* **Database switcher included** (if multiple databases available)
 * **Deterministic** for consistent output
+
+### Multi-Database Switching
+
+The HTML viewer includes a database selector dropdown when multiple databases are available. Users can switch databases via the `?database=` query parameter:
+
+```
+http://localhost:8000/your-script.php?database=my_database
+http://localhost:8000/your-script.php?database=another_database
+```
+
+The library automatically:
+1. Detects the `?database=` parameter
+2. Fetches schema for the requested database
+3. Renders the appropriate database's tables and structure
+4. Includes available databases in the selector dropdown
 
 ---
 
