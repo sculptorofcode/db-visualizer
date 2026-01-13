@@ -1,0 +1,20 @@
+{
+    "name": "sculptor/db-visualizer",
+    "description": "Read-only, framework-agnostic database schema visualizer for PHP",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Sculptor\\DbVisualizer\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "sculptorofcode"
+        }
+    ],
+    "minimum-stability": "stable",
+    "require": {
+        "php": ">=8.1"
+    }
+}
