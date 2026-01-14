@@ -180,4 +180,52 @@ final class Dashboard
         $form = new LoginForm();
         return $form->render($this->error);
     }
+
+    /**
+     * Complete render method - handles everything.
+     *
+     * Handles:
+     * - Logout action (destroys session)
+     * - Login form display
+     * - Credential processing
+     * - Schema visualization
+     * - Database switching
+     *
+     * @return string HTML output (login form or schema visualization)
+     */
+    public function render(): string
+    {
+        // Handle logout
+        if (isset($_GET['logout'])) {
+            $this->clearSession();
+            header('Location: ' . $_SERVER['PHP_SELF']);
+            exit;
+        }
+
+        // Process credentials (POST or session)
+        if (!$this->processCredentials()) {
+            // Show login form if no connection
+            return $this->renderLoginForm();
+        }
+
+        // Get connection and current database
+        $pdo = $this->getConnection();
+        $database = $this->getDatabase();
+
+        // Handle database switching from query parameter
+        $currentDatabase = $_GET['database'] ?? $database;
+
+        // Create visualizer
+        $connectionHandler = new ConnectionHandler($pdo, $currentDatabase);
+        $schema = $connectionHandler->getIntrospector()->schema($currentDatabase);
+
+        $visualizer = new Visualizer($schema, $connectionHandler, true);
+        $visualizer->enable();
+
+        // Render schema with logout button
+        return $visualizer->render(
+            $visualizer->getHTMLRenderer()
+                ->setLogoutUrl('?logout=1')
+        );
+    }
 }

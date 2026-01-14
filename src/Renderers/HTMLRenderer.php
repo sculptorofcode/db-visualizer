@@ -67,6 +67,13 @@ final class HTMLRenderer implements Renderer
     private array $availableDatabases = [];
 
     /**
+     * Logout URL for display in UI.
+     *
+     * @var string|null
+     */
+    private ?string $logoutUrl = null;
+
+    /**
      * Set the list of available databases for the selector dropdown.
      *
      * @param array<string> $databases List of database names
@@ -76,6 +83,19 @@ final class HTMLRenderer implements Renderer
     public function setAvailableDatabases(array $databases): self
     {
         $this->availableDatabases = $databases;
+        return $this;
+    }
+
+    /**
+     * Set the logout URL for display in UI.
+     *
+     * @param string|null $url Logout URL (e.g., "?logout=1")
+     *
+     * @return self
+     */
+    public function setLogoutUrl(?string $url): self
+    {
+        $this->logoutUrl = $url;
         return $this;
     }
 
@@ -118,7 +138,7 @@ final class HTMLRenderer implements Renderer
             }
 
             // Render navigation with database info and available databases
-            $html .= Navigation::render($dbName, $this->availableDatabases, $engine, $tableCount, $tableLinks);
+            $html .= Navigation::render($dbName, $this->availableDatabases, $engine, $tableCount, $tableLinks, $this->logoutUrl);
 
             // Render table pages
             foreach ($tables as $table) {
@@ -126,7 +146,7 @@ final class HTMLRenderer implements Renderer
             }
         } else {
             // Render navigation even when no tables (shows database info)
-            $html .= Navigation::render($dbName, $this->availableDatabases, $engine, $tableCount, []);
+            $html .= Navigation::render($dbName, $this->availableDatabases, $engine, $tableCount, [], $this->logoutUrl);
             $html .= EmptyState::render();
         }
 

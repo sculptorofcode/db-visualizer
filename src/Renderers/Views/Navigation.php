@@ -17,6 +17,7 @@ final class Navigation
      * @param string $engine Escaped engine name
      * @param int $tableCount Number of tables
      * @param array<string, string> $tableLinks Map of anchor ID => escaped table name
+     * @param string|null $logoutUrl Optional logout URL
      *
      * @return string
      */
@@ -25,7 +26,8 @@ final class Navigation
         array $availableDatabases,
         string $engine,
         int $tableCount,
-        array $tableLinks
+        array $tableLinks,
+        ?string $logoutUrl = null
     ): string {
         $dbInfoHtml = SchemaHeader::render($currentDbName, $engine, $tableCount);
 
@@ -46,7 +48,13 @@ final class Navigation
             $selectorHtml .= '</form>';
         }
 
-        $html = $selectorHtml . $dbInfoHtml;
+        // Add logout button if logout URL provided
+        $logoutHtml = '';
+        if ($logoutUrl !== null) {
+            $logoutHtml = '<a href="' . htmlspecialchars($logoutUrl, ENT_QUOTES, 'UTF-8') . '" class="logout-btn" style="display: block; text-align: center; padding: 0.6rem; background-color: #e74c3c; color: white; border-radius: 4px; text-decoration: none; font-size: 12px; font-weight: 600; margin-top: 1rem;">Logout</a>';
+        }
+
+        $html = $selectorHtml . $dbInfoHtml . $logoutHtml;
 
         $html .= <<<'HTML'
         <div class="sidebar-section">
