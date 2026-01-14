@@ -20,13 +20,13 @@ final class DocumentHead
     {
         $escapedName = htmlspecialchars($dbName, ENT_QUOTES, 'UTF-8');
 
-        return <<<'HTML'
+        return <<<HTML
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Schema: </title>
+    <title>Schema: $escapedName</title>
     <style>
         * {
             margin: 0;
@@ -161,7 +161,7 @@ final class DocumentHead
 
         .table-list a {
             display: block;
-            padding: 0.5rem 0.6rem;
+            padding: 0.3rem 0.6rem;
             color: var(--text-color);
             text-decoration: none;
             border-left: 3px solid transparent;

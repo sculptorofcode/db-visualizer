@@ -20,3 +20,6 @@ build/
 # Documentation (keep README.md)
 *.md
 !README.md
+
+# Preview files
+preview.php

@@ -20,6 +20,15 @@ final class DocumentFooter
         </div>
     </div>
 </div>
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const tableLinks = document.querySelectorAll('.table-list a');
+        const firstLink = tableLinks[0];
+        if (firstLink) {
+            firstLink.click();
+        }
+    });
+</script>
 </body>
 </html>
 HTML;
